@@ -71,187 +71,305 @@ if subjects_col.count_documents({}) == 0 and assessments_col.count_documents({})
                 "Sleep_Hours": row["Sleep_Hours"],
                 "Daily_Activity_Hours": row["Daily_Activity_Hours"],
                 "Daily_Phone_Usage_Hours": row["Daily_Phone_Usage_Hours"],
-                "Daily_Coffee_Tea_Consumption": row["Daily_Coffee_Tea_Consumption"]
+                "Daily_Coffee_Tea_Consumption": row["Daily_Coffee_Tea_Consumption"],
+                "Daily_Walking_Running_Hours": float(f"{row['Daily_Walking_Running_Hours']:.1f}")
             }
             indicators_col.insert_one(indicators_doc)
 
-    print("Importazione completata.")
+    print("Import completed.")
 else:
-    print("Database già popolato. Importazione saltata.")
+    print("Database already populated. Import skipped.")
 
-st.title("Gestione NeuroDB - Disturbi del Neurosviluppo")
+st.markdown("<h1 style='text-align: center; color: #4B8BBE;'>Neurodevelopmental Disorders NeuroDB</h1>", unsafe_allow_html=True)
 
-menu = st.sidebar.selectbox("Seleziona operazione", ["Crea", "Visualizza", "Aggiorna", "Elimina", "JOIN"])
+with st.sidebar:
+    st.markdown(
+        "<div style='display: flex; justify-content: center; padding-bottom: 2rem'><img src='https://raw.githubusercontent.com/Rankoll/ADHD/refs/heads/main/logo-neurobd.png' width='150'></div>",
+        unsafe_allow_html=True
+    )
+    menu = st.selectbox("Select operation", ["Create", "Read", "Update", "Delete", "JOIN"])
+    collection = st.selectbox(
+        "Collection",
+        ["subjects", "assessments", "indicators"]
+    )
 
-collezione = st.sidebar.selectbox(
-    "Collezione",
-    ["subjects", "assessments", "indicators"]
-)
+st.markdown("---")
 
-if menu == "Crea":
-    if collezione == "subjects":
-        id = st.text_input("ID Soggetto")
-        nome = st.text_input("Nome")
-        età = st.number_input("Età", min_value=0)
-        diagnosi = st.text_input("Diagnosi (separate da virgola)")
-        if st.button("Inserisci Subject"):
-            if subjects_col.find_one({"subject_id": id}):
-                st.error("ID soggetto già presente!")
+if menu == "Create":
+    st.subheader(f"Insert new element in **{collection.capitalize()}**")
+    if collection == "subjects":
+        # Progressive subject_id
+        last_subject = subjects_col.find_one(sort=[("subject_id", -1)])
+        next_id = (last_subject["subject_id"] + 1) if last_subject else 1
+
+        st.info(f"The subject ID will be assigned automatically: {next_id}")
+        age = st.number_input("Age", min_value=3, max_value=100)
+        gender = st.text_input("Gender", value=1, help="1 for male, 2 for female")
+        educational_level = st.text_input("Educational Level", help="Kindergarten, Middle, Primary, Secondary, University, Working, Not Working")
+        family_history = st.text_input("Family History", help="No, Yes, Unknown")
+        if st.button("Insert Subject", use_container_width=True):
+            if subjects_col.find_one({"subject_id": next_id}):
+                st.error("Subject ID already exists!")
             else:
-                subjects_col.insert_one({
-                    "subject_id": id,
-                    "name": nome,
-                    "age": età,
-                    "diagnosis": [d.strip() for d in diagnosi.split(",")]
-                })
-                st.success("Soggetto inserito!")
-            
-    elif collezione == "indicators":
-        subject_id = st.text_input("ID Soggetto per Indicators")
-        sleep_hours = st.number_input("Ore di Sonno", min_value=0.0)
-        activity_hours = st.number_input("Ore Attività Giornaliera", min_value=0.0)
-        phone_hours = st.number_input("Ore Uso Telefono", min_value=0.0)
-        coffee_tea = st.text_input("Consumo Giornaliero Caffè/Tè")
-        if st.button("Inserisci Indicators"):
-            if not subjects_col.find_one({"subject_id": subject_id}):
-                st.error("ID soggetto non esistente! Inserire prima il soggetto.")
-            elif indicators_col.find_one({"subject_id": subject_id}):
-                st.error("Indicators già presenti per questo soggetto!")
+                subject_doc = {
+                    "subject_id": next_id,
+                    "age": age,
+                    "gender": gender,
+                    "educational_level": educational_level,
+                    "family_history": family_history
+                }
+                subjects_col.insert_one(subject_doc)
+                st.success("Subject inserted!")
+
+    elif collection == "indicators":
+        last_indicator = indicators_col.find_one(sort=[("subject_id", -1)])
+        next_id = (last_indicator["subject_id"] + 1) if last_indicator else 1
+
+        st.info(f"The subject ID for these indicators will be assigned automatically: {next_id}")
+        sleep_hours = st.number_input("Sleep Hours", min_value=0, max_value=24)
+        activity_hours = st.number_input("Daily Activity Hours", min_value=0, max_value=24)
+        phone_hours = st.number_input("Daily Phone Usage Hours", min_value=0, max_value=24)
+        coffee_tea = st.number_input("Daily Coffee/Tea Consumption", min_value=0)
+        walking_running_hours = st.number_input(
+            "Daily Walking/Running Hours", min_value=0.0, max_value=24.0, format="%.1f"
+        )
+        if st.button("Insert Indicators", use_container_width=True):
+            if not subjects_col.find_one({"subject_id": next_id}):
+                st.error("Subject ID does not exist! Please insert the subject first.")
+            elif indicators_col.find_one({"subject_id": next_id}):
+                st.error("Indicators already exist for this subject!")
             else:
-                indicators_col.insert_one({
-                    "subject_id": subject_id,
+                indicators_doc = {
+                    "subject_id": next_id,
                     "Sleep_Hours": sleep_hours,
                     "Daily_Activity_Hours": activity_hours,
                     "Daily_Phone_Usage_Hours": phone_hours,
-                    "Daily_Coffee_Tea_Consumption": coffee_tea
-                })
-                st.success("Indicators inseriti!")
+                    "Daily_Coffee_Tea_Consumption": coffee_tea,
+                    "Daily_Walking_Running_Hours": float(f"{walking_running_hours:.1f}")
+                }
+                indicators_col.insert_one(indicators_doc)
+                st.success("Indicators inserted!")
             
-    elif collezione == "assessments":
-        subject_id = st.text_input("ID Soggetto per Assessment")
-        nome_assessment = st.text_input("Nome Assessment")
-        inattention_score = st.number_input("Punteggio Inattenzione", min_value=0)
-        hyperactivity_score = st.number_input("Punteggio Iperattività", min_value=0)
-        if st.button("Inserisci Assessment"):
-            if not subjects_col.find_one({"subject_id": subject_id}):
-                st.error("ID soggetto non esistente! Inserire prima il soggetto.")
-            elif assessments_col.find_one({"subject_id": subject_id, "name": nome_assessment}):
-                st.error("Assessment già presente per questo soggetto con questo nome!")
+    elif collection == "assessments":
+        last_assessment = assessments_col.find_one(sort=[("subject_id", -1)])
+        next_id = (last_assessment["subject_id"] + 1) if last_assessment else 1
+
+        st.info(f"The subject ID for this assessment will be assigned automatically: {next_id}")
+        name_assessment = st.text_input("Assessment Name", value="SNAP-IV")
+
+        # Display Inattention and Hyperactivity as tables
+        st.markdown("### Inattention Scores")
+        inattention_keys = [f"Q1_{i}" for i in range(1, 10)]
+        inattention_values = []
+        cols_inatt = st.columns(9)
+        for idx, k in enumerate(inattention_keys):
+            with cols_inatt[idx]:
+                st.markdown(f"<div style='text-align: center;'><b>Q1_{idx+1}</b><br><span style='font-size: 1.2em;'></span></div>", unsafe_allow_html=True)
+                val = st.number_input(
+                    f"{k}", min_value=0, max_value=3, key=f"inatt_{k}", label_visibility="collapsed"
+                )
+                inattention_values.append(val)
+
+        st.markdown("### Hyperactivity Scores")
+        hyperactivity_keys = [f"Q2_{i}" for i in range(1, 10)]
+        hyperactivity_values = []
+        cols_hyper = st.columns(9)
+        for idx, k in enumerate(hyperactivity_keys):
+            with cols_hyper[idx]:
+                st.markdown(f"<div style='text-align: center;'><b>Q2_{idx+1}</b><br><span style='font-size: 1.2em;'></span></div>", unsafe_allow_html=True)
+                val = st.number_input(
+                    f"{k}", min_value=0, max_value=3, key=f"iper_{k}", label_visibility="collapsed"
+                )
+                hyperactivity_values.append(val)
+
+        focus_score = st.number_input("Focus Score Video", min_value=0, max_value=10)
+        diff_org = st.number_input("Difficulty Organizing Tasks", min_value=0, max_value=1)
+        learn_diff = st.number_input("Learning Difficulties", min_value=0, max_value=1)
+        anx_dep = st.number_input("Anxiety Depression Levels", min_value=0, max_value=3)
+        inattention_score = sum(inattention_values)
+        hyperactivity_score = sum(hyperactivity_values)
+        if st.button("Insert Assessment", use_container_width=True):
+            if not subjects_col.find_one({"subject_id": next_id}):
+                st.error("Subject ID does not exist! Please insert the subject first.")
+            elif assessments_col.find_one({"subject_id": next_id, "name": name_assessment}):
+                st.error("Assessment already exists for this subject with this name!")
             else:
-                assessments_col.insert_one({
-                    "subject_id": subject_id,
-                    "name": nome_assessment,
+                assessment_doc = {
+                    "subject_id": next_id,
+                    "name": name_assessment,
+                    "inattention": {k: v for k, v in zip(inattention_keys, inattention_values)},
+                    "hyperactivity": {k: v for k, v in zip(hyperactivity_keys, hyperactivity_values)},
+                    "Focus_Score_Video": focus_score,
+                    "Difficulty_Organizing_Tasks": diff_org,
+                    "Learning_Difficulties": learn_diff,
+                    "Anxiety_Depression_Levels": anx_dep,
                     "inattention_score": inattention_score,
                     "hyperactivity_score": hyperactivity_score,
                     "inattention_severity": classify_score(inattention_score),
                     "hyperactivity_severity": classify_score(hyperactivity_score)
-                })
-                st.success("Assessment inserito!")
+                }
+                assessments_col.insert_one(assessment_doc)
+                st.success("Assessment inserted!")
 
-elif menu == "Visualizza":
-    id = st.number_input("Filtra per ID soggetto (opzionale)", min_value=0, step=1, format="%d")
-    if collezione == "subjects":
+elif menu == "Read":
+    st.subheader(f"View data from **{collection.capitalize()}**")
+    id = st.number_input("Filter by Subject ID (optional)", min_value=1, step=1, format="%d")
+    if collection == "subjects":
         if id:
             subject = subjects_col.find_one({"subject_id": id})
             subjects = [subject] if subject else []
         else:
             subjects = list(subjects_col.find())
         if subjects:
-            st.write("Lista Soggetti:")
             for subject in subjects:
-                st.json(subject)
+                with st.expander(f"Subject ID: {subject.get('subject_id', '')}", expanded=True):
+                    st.json(subject)
         else:
-            st.info("Nessun soggetto trovato.")
+            st.warning("No subjects found.")
 
-    elif collezione == "assessments":
+    elif collection == "assessments":
         if id:
             assessment = assessments_col.find_one({"subject_id": id})
             assessments = [assessment] if assessment else []
         else:
             assessments = list(assessments_col.find())
         if assessments:
-            st.write("Lista Assessments:")
             for assessment in assessments:
-                st.json(assessment)
+                with st.expander(f"Assessment: {assessment.get('name', '')} (ID: {assessment.get('subject_id', '')})", expanded=True):
+                    st.json(assessment)
         else:
-            st.info("Nessun assessment trovato.")
+            st.warning("No assessments found.")
 
-    elif collezione == "indicators":
+    elif collection == "indicators":
         if id:
             indicator = indicators_col.find_one({"subject_id": id})
             indicators = [indicator] if indicator else []
         else:
             indicators = list(indicators_col.find())
         if indicators:
-            st.write("Lista Indicators:")
             for indicator in indicators:
-                st.json(indicator)
+                with st.expander(f"Indicators for ID: {indicator.get('subject_id', '')}", expanded=True):
+                    st.json(indicator)
         else:
-            st.info("Nessun indicator trovato.")
+            st.warning("No indicators found.")
 
-elif menu == "Aggiorna":
-    if collezione == "subjects":
-        id = st.number_input("Filtra per ID soggetto (opzionale)", min_value=0, step=1, format="%d")
+elif menu == "Update":
+    st.subheader(f"Update data in **{collection.capitalize()}**")
+    id = st.number_input("Filter by Subject ID (optional)", min_value=1, value=1, step=1, format="%d")
+    if collection == "subjects":
         subject = subjects_col.find_one({"subject_id": id})
         if subject:
-            nuovo_nome = st.text_input("Nome", value=subject.get("name", ""))
-            nuova_età = st.number_input("Età", min_value=0, value=subject.get("age", 0))
-            nuovo_livello = st.text_input("Educational Level", value=subject.get("educational_level", ""))
-            nuova_storia = st.text_input("Family History", value=subject.get("family_history", ""))
-            nuovo_genere = st.text_input("Gender", value=subject.get("gender", ""))
-            if st.button("Aggiorna Subject"):
+            new_age = st.number_input("Age", min_value=0, value=subject.get("age", 0))
+            new_educational_level = st.text_input("Educational Level", value=subject.get("educational_level", ""))
+            new_family_history = st.text_input("Family History", value=subject.get("family_history", ""))
+            new_gender = st.text_input("Gender", value=subject.get("gender", ""))
+            if st.button("Update Subject", use_container_width=True):
                 subjects_col.update_one(
                     {"subject_id": id},
                     {"$set": {
-                        "name": nuovo_nome,
-                        "age": nuova_età,
-                        "educational_level": nuovo_livello,
-                        "family_history": nuova_storia,
-                        "gender": nuovo_genere
+                        "age": new_age,
+                        "educational_level": new_educational_level,
+                        "family_history": new_family_history,
+                        "gender": new_gender
                     }}
                 )
-                st.success("Subject aggiornato!")
+                st.success("Subject updated!")
         else:
-            st.info("Soggetto non trovato.")
+            st.warning("Subject not found.")
 
-    elif collezione == "assessments":
-        id = st.number_input("Filtra per ID soggetto (opzionale)", min_value=0, step=1, format="%d")
-        nome_assessment = st.text_input("Nome Assessment")
-        assessment = assessments_col.find_one({"subject_id": id, "name": nome_assessment})
+    elif collection == "assessments":
+        assessment_name = st.text_input("Assessment Name", value="SNAP-IV")
+        assessment = assessments_col.find_one({"subject_id": id, "name": assessment_name})
         if assessment:
-            inatt = st.number_input("Punteggio Inattenzione", min_value=0, value=assessment.get("inattention_score", 0))
-            iper = st.number_input("Punteggio Iperattività", min_value=0, value=assessment.get("hyperactivity_score", 0))
-            focus = st.number_input("Focus Score Video", min_value=0, value=assessment.get("Focus_Score_Video", 0))
-            diff_org = st.text_input("Difficulty Organizing Tasks", value=str(assessment.get("Difficulty_Organizing_Tasks", "")))
-            learn_diff = st.text_input("Learning Difficulties", value=str(assessment.get("Learning_Difficulties", "")))
-            anx_dep = st.text_input("Anxiety Depression Levels", value=str(assessment.get("Anxiety_Depression_Levels", "")))
-            if st.button("Aggiorna Assessment"):
+            st.markdown("### Inattention Scores")
+            inattention_keys = [f"Q1_{i}" for i in range(1, 10)]
+            inattention_values = []
+            cols_inatt = st.columns(9)
+            for idx, k in enumerate(inattention_keys):
+                with cols_inatt[idx]:
+                    st.markdown(f"<div style='text-align: center;'><b>Q1_{idx+1}</b></div>", unsafe_allow_html=True)
+                    val = st.number_input(
+                        f"{k}",
+                        min_value=0,
+                        max_value=3,
+                        value=assessment.get("inattention", {}).get(k, 0) if isinstance(assessment.get("inattention"), dict) else assessment.get(k, 0),
+                        key=f"update_inatt_{k}",
+                        label_visibility="collapsed"
+                    )
+                    inattention_values.append(val)
+
+            st.markdown("### Hyperactivity Scores")
+            hyperactivity_keys = [f"Q2_{i}" for i in range(1, 10)]
+            hyperactivity_values = []
+            cols_hyper = st.columns(9)
+            for idx, k in enumerate(hyperactivity_keys):
+                with cols_hyper[idx]:
+                    st.markdown(f"<div style='text-align: center;'><b>Q2_{idx+1}</b></div>", unsafe_allow_html=True)
+                    val = st.number_input(
+                        f"{k}",
+                        min_value=0,
+                        max_value=3,
+                        value=assessment.get("hyperactivity", {}).get(k, 0) if isinstance(assessment.get("hyperactivity"), dict) else assessment.get(k, 0),
+                        key=f"update_iper_{k}",
+                        label_visibility="collapsed"
+                    )
+                    hyperactivity_values.append(val)
+
+            focus_score = st.number_input(
+                "Focus Score Video",
+                min_value=0,
+                max_value=10,
+                value=assessment.get("Focus_Score_Video", 0)
+            )
+            diff_org = st.number_input(
+                "Difficulty Organizing Tasks",
+                min_value=0,
+                max_value=1,
+                value=assessment.get("Difficulty_Organizing_Tasks", 0)
+            )
+            learn_diff = st.number_input(
+                "Learning Difficulties",
+                min_value=0,
+                max_value=1,
+                value=assessment.get("Learning_Difficulties", 0)
+            )
+            anx_dep = st.number_input(
+                "Anxiety Depression Levels",
+                min_value=0,
+                max_value=3,
+                value=assessment.get("Anxiety_Depression_Levels", 0)
+            )
+            inattention_score = sum(inattention_values)
+            hyperactivity_score = sum(hyperactivity_values)
+
+            if st.button("Update Assessment", use_container_width=True):
                 assessments_col.update_one(
-                    {"subject_id": id, "name": nome_assessment},
+                    {"subject_id": id, "name": assessment_name},
                     {"$set": {
-                        "inattention_score": inatt,
-                        "hyperactivity_score": iper,
-                        "inattention_severity": classify_score(inatt),
-                        "hyperactivity_severity": classify_score(iper),
-                        "Focus_Score_Video": focus,
+                        "inattention": {k: v for k, v in zip(inattention_keys, inattention_values)},
+                        "hyperactivity": {k: v for k, v in zip(hyperactivity_keys, hyperactivity_values)},
+                        "inattention_score": inattention_score,
+                        "hyperactivity_score": hyperactivity_score,
+                        "inattention_severity": classify_score(inattention_score),
+                        "hyperactivity_severity": classify_score(hyperactivity_score),
+                        "Focus_Score_Video": focus_score,
                         "Difficulty_Organizing_Tasks": diff_org,
                         "Learning_Difficulties": learn_diff,
                         "Anxiety_Depression_Levels": anx_dep
                     }}
                 )
-                st.success("Assessment aggiornato!")
+                st.success("Assessment updated!")
         else:
-            st.info("Assessment non trovato.")
+            st.warning("Assessment not found.")
 
-    elif collezione == "indicators":
-        id = st.number_input("Filtra per ID soggetto (opzionale)", min_value=0, step=1, format="%d")
+    elif collection == "indicators":
         indicators = indicators_col.find_one({"subject_id": id})
         if indicators:
-            sleep = st.number_input("Ore di Sonno", min_value=0, value=indicators.get("Sleep_Hours", 0))
-            activity = st.number_input("Ore Attività Giornaliera", min_value=0, value=indicators.get("Daily_Activity_Hours", 0))
-            phone = st.number_input("Ore Uso Telefono", min_value=0, value=indicators.get("Daily_Phone_Usage_Hours", 0))
-            coffee = st.text_input("Consumo Giornaliero Caffè/Tè", value=indicators.get("Daily_Coffee_Tea_Consumption", ""))
-            if st.button("Aggiorna Indicators"):
+            sleep = st.number_input("Sleep Hours", min_value=0, value=indicators.get("Sleep_Hours", 0))
+            activity = st.number_input("Daily Activity Hours", min_value=0, value=indicators.get("Daily_Activity_Hours", 0))
+            phone = st.number_input("Daily Phone Usage Hours", min_value=0, value=indicators.get("Daily_Phone_Usage_Hours", 0))
+            coffee = st.text_input("Daily Coffee/Tea Consumption", value=indicators.get("Daily_Coffee_Tea_Consumption", ""))
+            if st.button("Update Indicators", use_container_width=True):
                 indicators_col.update_one(
                     {"subject_id": id},
                     {"$set": {
@@ -261,38 +379,38 @@ elif menu == "Aggiorna":
                         "Daily_Coffee_Tea_Consumption": coffee
                     }}
                 )
-                st.success("Indicators aggiornati!")
+                st.success("Indicators updated!")
         else:
-            st.info("Indicators non trovati.")
+            st.warning("Indicators not found.")
 
-elif menu == "Elimina":
-    if collezione == "subjects":
-        id = st.number_input("Filtra per ID soggetto (opzionale)", min_value=0, step=1, format="%d")
-        if st.button("Elimina Subject e dati correlati"):
+elif menu == "Delete":
+    st.subheader(f"Delete data from **{collection.capitalize()}**")
+    id = st.number_input("Filter by Subject ID (optional)", min_value=1, value=1, step=1, format="%d")
+    if collection == "subjects":
+        if st.button("Delete Subject and related data", use_container_width=True):
             subjects_col.delete_one({"subject_id": id})
             assessments_col.delete_many({"subject_id": id})
             indicators_col.delete_many({"subject_id": id})
-            st.warning("Soggetto e dati correlati eliminati.")
-    elif collezione == "assessments":
-        id = st.number_input("Filtra per ID soggetto (opzionale)", min_value=0, step=1, format="%d")
-        nome_assessment = st.text_input("Nome Assessment da eliminare")
-        if st.button("Elimina Assessment"):
-            result = assessments_col.delete_one({"subject_id": id, "name": nome_assessment})
+            st.error("Subject and related data deleted.")
+    elif collection == "assessments":
+        assessment_name = st.text_input("Assessment Name to delete", value="SNAP-IV")
+        if st.button("Delete Assessment", use_container_width=True):
+            result = assessments_col.delete_one({"subject_id": id, "name": assessment_name})
             if result.deleted_count > 0:
-                st.warning("Assessment eliminato.")
+                st.error("Assessment deleted.")
             else:
-                st.info("Nessun assessment trovato con questi dati.")
-    elif collezione == "indicators":
-        id = st.number_input("Filtra per ID soggetto (opzionale)", min_value=0, step=1, format="%d")
-        if st.button("Elimina Indicators"):
+                st.warning("No assessment found with these details.")
+    elif collection == "indicators":
+        if st.button("Delete Indicators", use_container_width=True):
             result = indicators_col.delete_many({"subject_id": id})
             if result.deleted_count > 0:
-                st.warning("Indicators eliminati.")
+                st.error("Indicators deleted.")
             else:
-                st.info("Nessun indicators trovato per questo soggetto.")
+                st.warning("No indicators found for this subject.")
 
 elif menu == "JOIN":
-    id = st.number_input("Filtra per ID soggetto (opzionale)", min_value=0, step=1, format="%d")
+    st.subheader("View aggregated data (JOIN)")
+    id = st.number_input("Filter by Subject ID (optional)", min_value=1, value=1, step=1, format="%d")
     match_stage = []
     if id:
         match_stage = [{"$match": {"subject_id": id}}]
@@ -315,7 +433,8 @@ elif menu == "JOIN":
     )
     found = False
     for doc in result:
-        st.json(doc)
+        with st.expander(f"Aggregated for ID: {doc.get('subject_id', '')}"):
+            st.json(doc)
         found = True
     if not found:
-        st.info("Nessun risultato trovato per la join.")
+        st.warning("No results found for the join.")
