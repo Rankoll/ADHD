@@ -5,6 +5,7 @@ Developed in **Python** with a **Streamlit** interface, the system supports full
 
 ## Division in collection
 Data is structured into three collections:
+
 `subjects` (demographics): subject_id, Age, Gender, Educational_Level, and Family_History.
 
 `indicators` (behavioral habits): subject_id, Sleep_Hours, Daily_Activity_Hours, Phone Usage, and Caffeine Consumption.
