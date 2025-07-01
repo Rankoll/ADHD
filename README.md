@@ -4,40 +4,101 @@
 <img src="logo-neurobd.png">
 </p>
 
-This project implements a clinical data for ADHD (from the [dataset](https://www.kaggle.com/datasets/a7md19/adhd-dataset-4-classes-u2) available on Kaggle) management system using **MongoDB (NoSQL)**, as it ensures flexibility and scalability for managing heterogeneous clinical data to organize information from patients who completed the **SNAP-IV** questionnaire.
+## Introduction
 
-Developed in **Python** with a **Streamlit** interface, the system supports full **CRUD** operations plus a join and automatically classifies SNAP-IV scores based on clinical thresholds.
+The *Neurobd* project was created with the goal of providing an interactive and scalable platform for managing and analyzing clinical data related to Attention Deficit Hyperactivity Disorder (ADHD). Based on modern technologies such as [**MongoDB**](https://www.mongodb.com/), [**Python**](https://www.python.org/) e [**Streamlit**](https://streamlit.io/), the system is designed to offer full CRUD operations (Create, Read, Update, Delete), including a join operation, through a simple and intuitive user interface for clinicians, psychologists, and psychotherapists.
 
-## Division in collection
+The [reference dataset](https://www.kaggle.com/datasets/a7md19/adhd-dataset-4-classes-u2), available on Kaggle, contains information collected using the [**SNAP-IV**](https://www.icscanegrate.edu.it/uploads/files/LA_SCALA_SDAI.pdf) clinical questionnaire, enriched with supporting variables related to lifestyle and demographic characteristics.
 
-Data is structured into three collections:
+## Miniworld description
 
-`subjects` (demographics): subject_id, Age, Gender, Educational_Level, and Family_History.
+The system models a *clinical miniworld* focused on managing information about patients diagnosed with ADHD. Data is divided into three main collections in the MongoDB NoSQL database:
 
-`indicators` (behavioral habits): subject_id, Sleep_Hours, Daily_Activity_Hours, Phone Usage, and Caffeine Consumption.
+- **subjects**: contains demographic information (age, gender, educational level, family history).
 
-`assessments` (questionnaire + supportive variables): subject_id, name, Q1_1 to Q1_9 (assess Hyperactivity), Q2_1 to Q2_9 (assess Inattention), Focus_Score_Video (concentration ability), Difficulty_Organizing_Tasks, Learning_Difficulties, Anxiety_Depression_Levels, inattention_score, hyperactivity_score, inattention_severity, hyperactivity_severity.
+- **indicators**: collects behavioral habits (sleep hours, phone usage, physical activity, caffeine consumption).
+
+- **assessments**: stores the results of the SNAP-IV questionnaires, aggregate scores for inattention and hyperactivity, and related difficulties (focus, organization, anxiety, learning).
+
+Each subject is identified by a unique `subject_id` that logically links data across the three collections.
+
+## Application context
+
+The system can be applied in several contexts:
+
+- **Clinical**: to assist specialists in collecting and reviewing behavioral and psychometric data of patients.
+
+- **Research**: to collect data through administered tests and store them within the system, analyze patterns in SNAP-IV scores, and evaluate correlations between lifestyle factors and clinical manifestations of ADHD.
+
+- **Educational**: for academic projects and experimental theses in healthcare, computer science, or psychology.
+
+The flexibility of the NoSQL architecture and the use of Streamlit allow the system to adapt quickly to new clinical or experimental requirements.
+
+## Proposed solution
+
+The platform provides the following core features:
+
+- **Streamlit Interface** for user-friendly interaction.
+
+- **Automatic dataset loading** from CSV file and population of the MongoDB database on first run.
+
+- **Automatic classification** of symptom severity based on SNAP-IV scores and predefined clinical thresholds.
+
+- **Full CRUD support** for each collection (subjects, indicators, assessments).
+
+- **Cross-collection JOIN** to obtain an aggregated patient view.
+
+- **Automatic diagnosis** (No ADHD, Inattentive type, Hyperactive-Impulsive type, Combined type) based on specific clinical thresholds.
+
+## Methodology used to develop the solution
+
+### 1. MongoDB Database organization
+
+The `neurobd` database is created locally with three logical collections (`subjects`, `indicators`, `assessments`) modeled using simplified relational normalization.
+
+### 2. Loading and classification
+
+On the first run, the `adhd_data.csv` file in the `dataset` folder is loaded and processed via a Python script:
+
+- Calculation of total **inattention** scores (`Q1_1–Q1_9`) and **hyperactivity** scores (`Q2_1–Q2_9`).
+
+- Classification of scores into four clinical severity levels (not significant, mild, moderate, severe).
+
+- Automatic diagnosis based on clinical thresholds.
+
+### 3. Streamlit interface
+
+The Streamlit application allows users to:
+
+- Insert new patients and associated data.
+
+- View, update, and delete existing data.
+
+- Perform cross-collection aggregation (JOIN).
+
+- Provide immediate feedback on the diagnosis based on SNAP-IV scores.
 
 ## Installation
 
-Be sure to have installed:
+Make sure you have installed:
 
 - [Anaconda](https://www.anaconda.com/)
 
-- An environment called `neurobd` with python version 3.10 and the following packages:
+- An environment named `neurobd` with Python version 3.10 and the following packages:
+
 	- `streamlit`
 	- `pandas`
 	- `pymongo`
 
----
-
-You can create the environment with:
+Otherwise, you can create it using the command:
 
 ```bash
 conda create -n neurobd python=3.10 streamlit pandas pymongo
 ```
 
-Then you can execute the `run.bat` for Windows or the `run.sh` to execute it with shell.
+---
+
+Then you can run `run.bat` on Windows or `run.sh` from a shell.
 
 ## References
 

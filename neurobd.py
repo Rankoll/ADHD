@@ -45,8 +45,6 @@ def diagnosis_scorebased(inattention_score, hyperactivity_score):
     else:
         return "Hyperactive and Inattentive type"
     
-populated = False
-
 # Data insertion only if database is empty (first run)
 if subjects_col.count_documents({}) == 0 and assessments_col.count_documents({}) == 0 and indicators_col.count_documents({}) == 0:
     for idx, row in df.iterrows():
@@ -104,10 +102,6 @@ if subjects_col.count_documents({}) == 0 and assessments_col.count_documents({})
             indicators_col.insert_one(indicators_doc)
 
     print("Import completed.")
-else:
-    if not populated:
-        populated = True
-        print("Database already populated. Import skipped.")
 
 # Streamlit app
 st.set_page_config(
