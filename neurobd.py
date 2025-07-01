@@ -44,6 +44,8 @@ def diagnosis_scorebased(inattention_score, hyperactivity_score):
         return "Hyperactive-Impulsive type"
     else:
         return "Hyperactive and Inattentive type"
+    
+populated = False
 
 # Data insertion only if database is empty (first run)
 if subjects_col.count_documents({}) == 0 and assessments_col.count_documents({}) == 0 and indicators_col.count_documents({}) == 0:
@@ -83,6 +85,10 @@ if subjects_col.count_documents({}) == 0 and assessments_col.count_documents({})
                 "hyperactivity_severity": classify_score(hyperactivity_score),
                 "Diagnosis_Class": diagnosis_classify(row["Diagnosis_Class"])
             }
+            assessments_col.create_index(
+                [("subject_id", 1), ("name", 1)],
+                unique=True
+            )
             assessments_col.insert_one(assessment_doc)
 
         # Check if indicators already exist
@@ -99,7 +105,9 @@ if subjects_col.count_documents({}) == 0 and assessments_col.count_documents({})
 
     print("Import completed.")
 else:
-    print("Database already populated. Import skipped.")
+    if not populated:
+        populated = True
+        print("Database already populated. Import skipped.")
 
 # Streamlit app
 st.set_page_config(
@@ -164,25 +172,23 @@ if menu == "Create":
                 st.success("Subject inserted!")
 
     elif collection == "indicators":
-        last_indicator = indicators_col.find_one(sort=[("subject_id", -1)])
-        next_id = (last_indicator["subject_id"] + 1) if last_indicator else 1
+        existing_subject_ids = set(doc["subject_id"] for doc in subjects_col.find({}, {"subject_id": 1}))
+        indicator_subject_ids = set(doc["subject_id"] for doc in indicators_col.find({}, {"subject_id": 1}))
+        available_subject_ids = sorted(list(existing_subject_ids - indicator_subject_ids))
 
-        st.info(f"The subject ID for these indicators will be assigned automatically: {next_id}")
-        sleep_hours = st.number_input("Sleep Hours", min_value=0, max_value=24)
-        activity_hours = st.number_input("Daily Activity Hours", min_value=0, max_value=24)
-        phone_hours = st.number_input("Daily Phone Usage Hours", min_value=0, max_value=24)
-        coffee_tea = st.number_input("Daily Coffee/Tea Consumption", min_value=0)
-        walking_running_hours = st.number_input(
-            "Daily Walking/Running Hours", min_value=0.0, max_value=24.0, format="%.1f", step=0.1
-        )
-        if st.button("Insert Indicators", use_container_width=True):
-            if not subjects_col.find_one({"subject_id": next_id}):
-                st.error("Subject ID does not exist! Please insert the subject first.")
-            elif indicators_col.find_one({"subject_id": next_id}):
-                st.error("Indicators already exist for this subject!")
-            else:
+        if available_subject_ids:
+            id = st.selectbox("Select Subject ID (only those without indicators)", available_subject_ids)
+            selected_subject = subjects_col.find_one({"subject_id": id})
+            sleep_hours = st.number_input("Sleep Hours", min_value=0, max_value=24)
+            activity_hours = st.number_input("Daily Activity Hours", min_value=0, max_value=24)
+            phone_hours = st.number_input("Daily Phone Usage Hours", min_value=0, max_value=24)
+            coffee_tea = st.number_input("Daily Coffee/Tea Consumption", min_value=0)
+            walking_running_hours = st.number_input(
+                "Daily Walking/Running Hours", min_value=0.0, max_value=24.0, format="%.1f", step=0.1
+            )
+            if st.button("Insert Indicators", use_container_width=True):
                 indicators_doc = {
-                    "subject_id": next_id,
+                    "subject_id": id,
                     "Sleep_Hours": sleep_hours,
                     "Daily_Activity_Hours": activity_hours,
                     "Daily_Phone_Usage_Hours": phone_hours,
@@ -191,69 +197,76 @@ if menu == "Create":
                 }
                 indicators_col.insert_one(indicators_doc)
                 st.success("Indicators inserted!")
+        else:
+            st.info("All subjects already have indicators or no subjects exist. Please add a new subject first.")
             
     elif collection == "assessments":
-        last_assessment = assessments_col.find_one(sort=[("subject_id", -1)])
-        next_id = (last_assessment["subject_id"] + 1) if last_assessment else 1
-
-        st.info(f"The subject ID for this assessment will be assigned automatically: {next_id}")
+        # Let user select subject to add assessment to
+        id = st.number_input("Filter by Subject ID", min_value=1, value=1, step=1, format="%d")
         name_assessment = st.selectbox("Assessment Name", ["SNAP-IV"])
 
-        # Display Inattention and Hyperactivity as tables
-        st.markdown("### Inattention Scores")
-        inattention_keys = [f"Q1_{i}" for i in range(1, 10)]
-        inattention_values = []
-        cols_inatt = st.columns(9)
-        for idx, k in enumerate(inattention_keys):
-            with cols_inatt[idx]:
-                st.markdown(f"<div style='text-align: center;'><b>Q1_{idx+1}</b><br><span style='font-size: 1.2em;'></span></div>", unsafe_allow_html=True)
-                val = st.number_input(
-                    f"{k}", min_value=0, max_value=3, key=f"inatt_{k}", label_visibility="collapsed"
-                )
-                inattention_values.append(val)
+        selected_subject = subjects_col.find_one({"subject_id": id})
+        assessment = assessments_col.find_one({"subject_id": id, "name": name_assessment})
 
-        st.markdown("### Hyperactivity Scores")
-        hyperactivity_keys = [f"Q2_{i}" for i in range(1, 10)]
-        hyperactivity_values = []
-        cols_hyper = st.columns(9)
-        for idx, k in enumerate(hyperactivity_keys):
-            with cols_hyper[idx]:
-                st.markdown(f"<div style='text-align: center;'><b>Q2_{idx+1}</b><br><span style='font-size: 1.2em;'></span></div>", unsafe_allow_html=True)
-                val = st.selectbox(
-                    f"{k}", [0,1,2,3], key=f"iper_{k}", label_visibility="collapsed"
-                )
-                hyperactivity_values.append(val)
+        if selected_subject:
+            if not assessment:
+                # Only show form if there is NO assessment for this subject and name
+                st.markdown("### Inattention Scores")
+                inattention_keys = [f"Q1_{i}" for i in range(1, 10)]
+                inattention_values = []
+                cols_inatt = st.columns(9)
+                for idx, k in enumerate(inattention_keys):
+                    with cols_inatt[idx]:
+                        st.markdown(f"<div style='text-align: center;'><b>Q1_{idx+1}</b><br><span style='font-size: 1.2em;'></span></div>", unsafe_allow_html=True)
+                        val = st.number_input(
+                            f"{k}", min_value=0, max_value=3, key=f"inatt_{k}", label_visibility="collapsed"
+                        )
+                        inattention_values.append(val)
 
-        inattention_score = sum(inattention_values)
-        hyperactivity_score = sum(hyperactivity_values)
-        st.markdown(f"Diagnosis based on scores: {diagnosis_scorebased(sum(inattention_values), sum(hyperactivity_values))}")
-        st.markdown("### Difficulties")
-        focus_score = st.number_input("Focus Score Video", min_value=0, max_value=10)
-        anx_dep = st.selectbox("Anxiety Depression Levels", [0,1,2,3])
-        diff_org = st.checkbox("Difficulty Organizing Tasks")
-        learn_diff = st.checkbox("Learning Difficulties")
-        if st.button("Insert Assessment", use_container_width=True):
-            if not subjects_col.find_one({"subject_id": next_id}):
-                st.error("Subject ID does not exist! Please insert the subject first.")
-            elif assessments_col.find_one({"subject_id": next_id, "name": name_assessment}):
-                st.error("Assessment already exists for this subject with this name!")
+                st.markdown("### Hyperactivity Scores")
+                hyperactivity_keys = [f"Q2_{i}" for i in range(1, 10)]
+                hyperactivity_values = []
+                cols_hyper = st.columns(9)
+                for idx, k in enumerate(hyperactivity_keys):
+                    with cols_hyper[idx]:
+                        st.markdown(f"<div style='text-align: center;'><b>Q2_{idx+1}</b><br><span style='font-size: 1.2em;'></span></div>", unsafe_allow_html=True)
+                        val = st.number_input(
+                            f"{k}", min_value=0, max_value=3, key=f"iper_{k}", label_visibility="collapsed"
+                        )
+                        hyperactivity_values.append(val)
+
+                inattention_score = sum(inattention_values)
+                hyperactivity_score = sum(hyperactivity_values)
+                st.markdown(f"Diagnosis based on scores: {diagnosis_scorebased(inattention_score, hyperactivity_score)}")
+                st.markdown("### Difficulties")
+                focus_score = st.number_input("Focus Score Video", min_value=0, max_value=10)
+                anx_dep = st.selectbox("Anxiety Depression Levels", [0,1,2,3])
+                diff_org = st.checkbox("Difficulty Organizing Tasks")
+                learn_diff = st.checkbox("Learning Difficulties")
+                if st.button("Insert Assessment", use_container_width=True):
+                    if assessments_col.find_one({"subject_id": id, "name": name_assessment}):
+                        st.error("Assessment already exists for this subject with this name!")
+                    else:
+                        assessment_doc = {
+                            "subject_id": id,
+                            "name": name_assessment,
+                            "inattention": {k: v for k, v in zip(inattention_keys, inattention_values)},
+                            "hyperactivity": {k: v for k, v in zip(hyperactivity_keys, hyperactivity_values)},
+                            "Focus_Score_Video": focus_score,
+                            "Difficulty_Organizing_Tasks": diff_org,
+                            "Learning_Difficulties": learn_diff,
+                            "Anxiety_Depression_Levels": anx_dep,
+                            "inattention_score": inattention_score,
+                            "hyperactivity_score": hyperactivity_score,
+                            "inattention_severity": classify_score(inattention_score),
+                            "hyperactivity_severity": classify_score(hyperactivity_score)
+                        }
+                        assessments_col.insert_one(assessment_doc)
+                        st.success("Assessment inserted!")
             else:
-                assessment_doc = {
-                    "subject_id": next_id,
-                    "name": name_assessment,
-                    "inattention": {k: v for k, v in zip(inattention_keys, inattention_values)},
-                    "hyperactivity": {k: v for k, v in zip(hyperactivity_keys, hyperactivity_values)},
-                    "Focus_Score_Video": focus_score,
-                    "Difficulty_Organizing_Tasks": diff_org,
-                    "Learning_Difficulties": learn_diff,
-                    "Anxiety_Depression_Levels": anx_dep,
-                    "inattention_score": inattention_score,
-                    "hyperactivity_score": hyperactivity_score,
-                    "inattention_severity": classify_score(inattention_score),
-                    "hyperactivity_severity": classify_score(hyperactivity_score)
-                }
-                assessments_col.insert_one(assessment_doc)
-                st.success("Assessment inserted!")
+                st.warning("This subject already has an assessment with this name. Please choose a different name or update the existing assessment.")
+        else:
+            st.warning("No subjects found with this ID. Please insert a valid subject first.")
 
 elif menu == "Read":
     st.subheader(f"View data from **{collection.capitalize()}**")
@@ -334,98 +347,102 @@ elif menu == "Update":
                 )
                 st.success("Subject updated!")
         else:
-            st.warning("Subject not found.")
+            st.warning("No subjects found with this ID. Please insert a valid subject first.")
 
     elif collection == "assessments":
         assessment_name = st.selectbox("Assessment Name", ["SNAP-IV"])
+        subject = subjects_col.find_one({"subject_id": id})
         assessment = assessments_col.find_one({"subject_id": id, "name": assessment_name})
-        if assessment:
-            st.markdown("### Inattention Scores")
-            inattention_keys = [f"Q1_{i}" for i in range(1, 10)]
-            inattention_values = []
-            cols_inatt = st.columns(9)
-            for idx, k in enumerate(inattention_keys):
-                with cols_inatt[idx]:
-                    st.markdown(f"<div style='text-align: center;'><b>Q1_{idx+1}</b></div>", unsafe_allow_html=True)
-                    val = st.number_input(
-                        f"{k}",
-                        min_value=0,
-                        max_value=3,
-                        value=assessment.get("inattention", {}).get(k, 0) if isinstance(assessment.get("inattention"), dict) else assessment.get(k, 0),
-                        key=f"update_inatt_{k}",
-                        label_visibility="collapsed"
-                    )
-                    inattention_values.append(val)
+        if subject:
+            if assessment:
+                st.markdown("### Inattention Scores")
+                inattention_keys = [f"Q1_{i}" for i in range(1, 10)]
+                inattention_values = []
+                cols_inatt = st.columns(9)
+                for idx, k in enumerate(inattention_keys):
+                    with cols_inatt[idx]:
+                        st.markdown(f"<div style='text-align: center;'><b>Q1_{idx+1}</b></div>", unsafe_allow_html=True)
+                        val = st.number_input(
+                            f"{k}",
+                            min_value=0,
+                            max_value=3,
+                            value=assessment.get("inattention", {}).get(k, 0) if isinstance(assessment.get("inattention"), dict) else assessment.get(k, 0),
+                            key=f"update_inatt_{k}",
+                            label_visibility="collapsed"
+                        )
+                        inattention_values.append(val)
 
-            st.markdown("### Hyperactivity Scores")
-            hyperactivity_keys = [f"Q2_{i}" for i in range(1, 10)]
-            hyperactivity_values = []
-            cols_hyper = st.columns(9)
-            for idx, k in enumerate(hyperactivity_keys):
-                with cols_hyper[idx]:
-                    st.markdown(f"<div style='text-align: center;'><b>Q2_{idx+1}</b></div>", unsafe_allow_html=True)
-                    val = st.number_input(
-                        f"{k}",
-                        min_value=0,
-                        max_value=3,
-                        value=assessment.get("hyperactivity", {}).get(k, 0) if isinstance(assessment.get("hyperactivity"), dict) else assessment.get(k, 0),
-                        key=f"update_iper_{k}",
-                        label_visibility="collapsed"
-                    )
-                    hyperactivity_values.append(val)
+                st.markdown("### Hyperactivity Scores")
+                hyperactivity_keys = [f"Q2_{i}" for i in range(1, 10)]
+                hyperactivity_values = []
+                cols_hyper = st.columns(9)
+                for idx, k in enumerate(hyperactivity_keys):
+                    with cols_hyper[idx]:
+                        st.markdown(f"<div style='text-align: center;'><b>Q2_{idx+1}</b></div>", unsafe_allow_html=True)
+                        val = st.number_input(
+                            f"{k}",
+                            min_value=0,
+                            max_value=3,
+                            value=assessment.get("hyperactivity", {}).get(k, 0) if isinstance(assessment.get("hyperactivity"), dict) else assessment.get(k, 0),
+                            key=f"update_iper_{k}",
+                            label_visibility="collapsed"
+                        )
+                        hyperactivity_values.append(val)
 
-            inattention_score = sum(inattention_values)
-            hyperactivity_score = sum(hyperactivity_values)
-            st.markdown(f"Diagnosis based on scores: {diagnosis_scorebased(inattention_score, hyperactivity_score)}")
+                inattention_score = sum(inattention_values)
+                hyperactivity_score = sum(hyperactivity_values)
+                st.markdown(f"Diagnosis based on scores: {diagnosis_scorebased(inattention_score, hyperactivity_score)}")
 
-            focus_score = st.number_input(
-                "Focus Score Video",
-                min_value=0,
-                max_value=10,
-                value=assessment.get("Focus_Score_Video", 0)
-            )
-            anx_dep = st.number_input(
-                "Anxiety Depression Levels",
-                min_value=0,
-                max_value=3,
-                value=assessment.get("Anxiety_Depression_Levels", 0)
-            )
-            diff_org = st.checkbox(
-                "Difficulty Organizing Tasks",
-                value=assessment.get("Difficulty_Organizing_Tasks", 0)
-            )
-            learn_diff = st.checkbox(
-                "Learning Difficulties",
-                value=assessment.get("Learning_Difficulties", 0)
-            )
-
-            if st.button("Update Assessment", use_container_width=True):
-                assessments_col.update_one(
-                    {"subject_id": id, "name": assessment_name},
-                    {"$set": {
-                        "inattention": {k: v for k, v in zip(inattention_keys, inattention_values)},
-                        "hyperactivity": {k: v for k, v in zip(hyperactivity_keys, hyperactivity_values)},
-                        "inattention_score": inattention_score,
-                        "hyperactivity_score": hyperactivity_score,
-                        "inattention_severity": classify_score(inattention_score),
-                        "hyperactivity_severity": classify_score(hyperactivity_score),
-                        "Focus_Score_Video": focus_score,
-                        "Difficulty_Organizing_Tasks": diff_org,
-                        "Learning_Difficulties": learn_diff,
-                        "Anxiety_Depression_Levels": anx_dep
-                    }}
+                focus_score = st.number_input(
+                    "Focus Score Video",
+                    min_value=0,
+                    max_value=10,
+                    value=assessment.get("Focus_Score_Video", 0)
                 )
-                st.success("Assessment updated!")
+                anx_dep = st.number_input(
+                    "Anxiety Depression Levels",
+                    min_value=0,
+                    max_value=3,
+                    value=assessment.get("Anxiety_Depression_Levels", 0)
+                )
+                diff_org = st.checkbox(
+                    "Difficulty Organizing Tasks",
+                    value=assessment.get("Difficulty_Organizing_Tasks", 0)
+                )
+                learn_diff = st.checkbox(
+                    "Learning Difficulties",
+                    value=assessment.get("Learning_Difficulties", 0)
+                )
+
+                if st.button("Update Assessment", use_container_width=True):
+                    assessments_col.update_one(
+                        {"subject_id": id, "name": assessment_name},
+                        {"$set": {
+                            "inattention": {k: v for k, v in zip(inattention_keys, inattention_values)},
+                            "hyperactivity": {k: v for k, v in zip(hyperactivity_keys, hyperactivity_values)},
+                            "inattention_score": inattention_score,
+                            "hyperactivity_score": hyperactivity_score,
+                            "inattention_severity": classify_score(inattention_score),
+                            "hyperactivity_severity": classify_score(hyperactivity_score),
+                            "Focus_Score_Video": focus_score,
+                            "Difficulty_Organizing_Tasks": diff_org,
+                            "Learning_Difficulties": learn_diff,
+                            "Anxiety_Depression_Levels": anx_dep
+                        }}
+                    )
+                    st.success("Assessment updated!")
+            else:
+                st.warning("No assessments found for this subject with this name. Please insert a valid assessment first.")
         else:
-            st.warning("Assessment not found.")
+            st.warning("No subjects found with this ID. Please insert a valid subject first.")
 
     elif collection == "indicators":
         indicators = indicators_col.find_one({"subject_id": id})
         if indicators:
-            sleep = st.number_input("Sleep Hours", min_value=0, value=indicators.get("Sleep_Hours", 0))
-            activity = st.number_input("Daily Activity Hours", min_value=0, value=indicators.get("Daily_Activity_Hours", 0))
-            phone = st.number_input("Daily Phone Usage Hours", min_value=0, value=indicators.get("Daily_Phone_Usage_Hours", 0))
-            coffee = st.text_input("Daily Coffee/Tea Consumption", value=indicators.get("Daily_Coffee_Tea_Consumption", ""))
+            sleep_hours = st.number_input("Sleep Hours", min_value=0, max_value=24)
+            activity_hours = st.number_input("Daily Activity Hours", min_value=0, max_value=24)
+            phone_hours = st.number_input("Daily Phone Usage Hours", min_value=0, max_value=24)
+            coffee_tea = st.number_input("Daily Coffee/Tea Consumption", min_value=0)
             walking_running_hours = st.number_input(
             "Daily Walking/Running Hours", min_value=0.0, max_value=24.0, format="%.1f", step=0.1, value=indicators.get("Daily_Walking_Running_Hours", 0.0)
             )
@@ -433,40 +450,46 @@ elif menu == "Update":
                 indicators_col.update_one(
                     {"subject_id": id},
                     {"$set": {
-                        "Sleep_Hours": sleep,
-                        "Daily_Activity_Hours": activity,
-                        "Daily_Phone_Usage_Hours": phone,
-                        "Daily_Coffee_Tea_Consumption": coffee
+                        "Sleep_Hours": sleep_hours,
+                        "Daily_Activity_Hours": activity_hours,
+                        "Daily_Phone_Usage_Hours": phone_hours,
+                        "Daily_Coffee_Tea_Consumption": coffee_tea,
+                        "Daily_Walking_Running_Hours": float(f"{walking_running_hours:.1f}")
                     }}
                 )
                 st.success("Indicators updated!")
         else:
-            st.warning("Indicators not found.")
+            st.warning("No subjects found with this ID. Please insert a valid subject first.")
 
 elif menu == "Delete":
     st.subheader(f"Delete data from **{collection.capitalize()}**")
     id = st.number_input("Filter by Subject ID", min_value=1, value=1, step=1, format="%d")
-    if collection == "subjects":
-        if st.button("Delete Subject and related data", use_container_width=True):
-            subjects_col.delete_one({"subject_id": id})
-            assessments_col.delete_many({"subject_id": id})
-            indicators_col.delete_many({"subject_id": id})
-            st.error("Subject and related data deleted.")
-    elif collection == "assessments":
-        assessment_name = st.selectbox("Assessment Name to delete", ["SNAP-IV"])
-        if st.button("Delete Assessment", use_container_width=True):
-            result = assessments_col.delete_one({"subject_id": id, "name": assessment_name})
-            if result.deleted_count > 0:
-                st.error("Assessment deleted.")
-            else:
-                st.warning("No assessment found with these details.")
-    elif collection == "indicators":
-        if st.button("Delete Indicators", use_container_width=True):
-            result = indicators_col.delete_many({"subject_id": id})
-            if result.deleted_count > 0:
-                st.error("Indicators deleted.")
-            else:
-                st.warning("No indicators found for this subject.")
+    subject = subjects_col.find_one({"subject_id": id})
+
+    if subject:
+        if collection == "subjects":
+            if st.button("Delete Subject and related data", use_container_width=True):
+                subjects_col.delete_one({"subject_id": id})
+                assessments_col.delete_many({"subject_id": id})
+                indicators_col.delete_many({"subject_id": id})
+                st.error("Subject and related data deleted.")
+        elif collection == "assessments":
+            assessment_name = st.selectbox("Assessment Name to delete", ["SNAP-IV"])
+            if st.button("Delete Assessment", use_container_width=True):
+                result = assessments_col.delete_one({"subject_id": id, "name": assessment_name})
+                if result.deleted_count > 0:
+                    st.error("Assessment deleted.")
+                else:
+                    st.warning("No assessment found with these details.")
+        elif collection == "indicators":
+            if st.button("Delete Indicators", use_container_width=True):
+                result = indicators_col.delete_many({"subject_id": id})
+                if result.deleted_count > 0:
+                    st.error("Indicators deleted.")
+                else:
+                    st.warning("No indicators found for this subject.")
+    else:
+        st.warning("No subjects found with this ID. Please insert a valid subject first.")
 
 elif menu == "JOIN":
     st.subheader("View aggregated data (JOIN)")
